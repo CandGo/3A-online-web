@@ -1,0 +1,2 @@
+# The published archive is verified byte-for-byte by scripts/verify-archive.mjs.
+archive/original.html -filter -text

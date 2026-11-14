@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-file/
+.playwright-cli/
+deploy/out/
+.DS_Store
+*.log
+.tmp-*.png
+.pose-*.png
+.vite/

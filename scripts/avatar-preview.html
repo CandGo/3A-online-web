@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>avatar v2 preview</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #20262c; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="module">
+  // 化身 v2 预览：4 色位 × 4 姿态（idle/walk/ads/crouch）+ 死亡切换
+  import * as THREE from "../src/vendor/three-r180.js";
+  import { createAvatar } from "../src/net/avatar.js";
+  import { SUN_LIGHT } from "../src/core/config.js";
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x39424c);
+  scene.fog = new THREE.Fog(0x39424c, 14, 42);
+
+  const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.05, 100);
+  // 相机取 location.hash：#cx,cy,cz,tx,ty,tz
+  const hp = (location.hash || "").replace("#", "").split(",").map(Number);
+  if (hp.length >= 6 && hp.every((n) => !isNaN(n))) {
+    camera.position.set(hp[0], hp[1], hp[2]);
+    camera.lookAt(hp[3], hp[4], hp[5]);
+  } else {
+    camera.position.set(2.6, 1.55, 3.4);
+    camera.lookAt(0, 1.0, 0);
+  }
+  window.__cam = camera;
+
+  const hemi = new THREE.HemisphereLight(0x9fb4c8, 0x3a3a34, 1.4);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(SUN_LIGHT.color, SUN_LIGHT.intensity);
+  sun.position.copy(SUN_LIGHT.dir).multiplyScalar(20);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -6;
+  sun.shadow.camera.right = sun.shadow.camera.top = 6;
+  sun.shadow.camera.far = 60;
+  sun.shadow.bias = -0.0004;
+  scene.add(sun);
+
+  const ground = new THREE.Mesh(
+    new THREE.CylinderGeometry(14, 14, 0.1, 48),
+    new THREE.MeshStandardMaterial({ color: 0x4b5158, roughness: 0.94, metalness: 0.05 }),
+  );
+  ground.position.y = -0.05;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  const COLORS = [0x2ee6d6, 0xff8a3c, 0xb45cff, 0xffd84d];
+  const params = new URLSearchParams(location.search);
+  const solo = params.get("solo");
+  const yawOverride = params.get("yaw");
+  const POSES = solo != null ? [params.get("pose") || "idle"] : ["idle", "walk", "ads", "crouch"];
+  const avatars = [];
+  const n = solo != null ? 1 : 4;
+  for (let i = 0; i < n; i++) {
+    const av = createAvatar(THREE, { color: COLORS[solo != null ? +solo % 4 : i], castShadow: true });
+    av.root.position.set((i - (n - 1) / 2) * 1.5, 0, 0);
+    av.root.rotation.y = yawOverride != null ? +yawOverride : -0.4;
+    scene.add(av.root);
+    avatars.push({ av, pose: POSES[i], i });
+  }
+
+  window.__kill = () => {
+    avatars[3].dead = !avatars[3].dead;
+  };
+  window.__spin = (y) => avatars.forEach((a) => (a.av.root.rotation.y = y));
+  window.__scene = scene;
+  window.__avatars = avatars;
+  window.__THREE = THREE;
+
+  const clock = new THREE.Clock();
+  let t = 0;
+  function frame() {
+    requestAnimationFrame(frame);
+    const dt = Math.min(clock.getDelta(), 0.05);
+    t += dt;
+    for (const a of avatars) {
+      let st = { speed: 0, vy: 0, crouch: false, sprint: false, ads: false, alive: true, pitch: 0, fireT: 0, reload: -1 };
+      if (a.pose === "walk") st.speed = 2.0;
+      if (a.pose === "run") st.speed = 5.2;
+      if (a.pose === "sprint") { st.sprint = true; st.speed = 6.5; }
+      if (a.pose === "ads") { st.ads = true; st.pitch = 0.05; }
+      if (a.pose === "crouch") st.crouch = true;
+      if (a.pose === "death") st.alive = false;
+      if (a.dead) st.alive = false;
+      a.av.applyPose(st, dt);
+      if (yawOverride == null) a.av.root.rotation.y = -0.4 + Math.sin(t * 0.2) * 0.25;
+    }
+    renderer.render(scene, camera);
+  }
+  frame();
+</script>
+</body>
+</html>

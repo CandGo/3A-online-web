@@ -1,0 +1,39 @@
+{
+  "name": "saltline-local",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local, editable restoration of the published Saltline browser game.",
+  "scripts": {
+    "dev": "vite",
+    "start": "vite",
+    "mp": "node server/index.js",
+    "mp:smoke": "node scripts/mp-smoke.mjs",
+    "test:trystero": "node scripts/test-trystero.mjs",
+    "test:ui-s13": "node scripts/test-ui-s13.mjs",
+    "test:trystero-live": "node scripts/test-trystero-live.mjs",
+    "build": "vite build && node scripts/build-file.mjs",
+    "build:file": "node scripts/build-file.mjs",
+    "preview": "vite preview",
+    "deploy:pack": "bash deploy/pack.sh",
+    "deploy": "bash deploy/deploy.sh",
+    "check": "node scripts/check-source.mjs && node scripts/verify-archive.mjs",
+    "format": "prettier --write index.html \"src/**/*.js\" src/*.css vite.config.js scripts/*.mjs scripts/lib/*.mjs",
+    "verify:archive": "node scripts/verify-archive.mjs",
+    "verify:refactor": "node scripts/verify-refactor.mjs"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "devDependencies": {
+    "@babel/parser": "7.29.13",
+    "@babel/traverse": "7.29.13",
+    "node-datachannel": "^0.33.6",
+    "prettier": "3.9.10",
+    "vite": "8.3.7"
+  },
+  "dependencies": {
+    "trystero": "^0.27.0",
+    "ws": "^8.22.2"
+  }
+}

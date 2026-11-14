@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0b0d0f" />
+    <meta
+      name="description"
+      content="Saltline — 切断港区三条上行链路，登上撤离船。"
+    />
+    <title>Saltline港区防线</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./src/fonts.css" />
+    <link rel="stylesheet" href="./src/ui.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="view" tabindex="0"></canvas>
+      <div id="ui"></div>
+      <div id="boot">
+        <div class="boot-mark">SALTLINE</div>
+        <div class="boot-sub" id="boot-msg">正在竖起港区终端</div>
+        <div class="boot-bar"><i id="boot-fill"></i></div>
+      </div>
+    </div>
+    <script type="module" src="./src/game.js"></script>
+  </body>
+</html>
