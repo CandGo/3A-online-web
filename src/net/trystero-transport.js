@@ -31,8 +31,35 @@ export const P2P_PUBLIC_SHARDS = 9;
 // appId 命名空间（§13.0「appId 前缀隔离」）：房间名只在同名 appId 内可见
 export const P2P_APP_ID = "saltline-p2p-v1";
 export const P2P_DIRECTORY_ROOM = "saltline-directory-v1";
+export const P2P_RELAY_REDUNDANCY = 8;
 const P2P_DIRECTORY_TTL_MS = 18_000;
 const P2P_DIRECTORY_HEARTBEAT_MS = 5_000;
+
+// Directory and game rooms share appId, relay selection and ICE configuration.
+function roomConfig(o) {
+  const cfg = {
+    appId: o.appId || P2P_APP_ID,
+    rtcConfig: { ...o.rtcConfig, iceServers: iceServerList(o) },
+    relayConfig: o.relayUrls && o.relayUrls.length
+      ? { urls: o.relayUrls.slice() }
+      : { redundancy: P2P_RELAY_REDUNDANCY },
+  };
+  if (o.rtcPolyfill) cfg.rtcPolyfill = o.rtcPolyfill;
+  return cfg;
+}
+
+// 中继按 appId 确定性选取；扩大默认前 5 个到前 8 个保持旧版本交集。
+// 显式 urls 仅用于注入，它会整体替换 Trystero 的确定性选择。
+// rtcConfig.iceServers 会替换 Trystero 默认值，因此同时保留国内及海外 STUN。
+function iceServerList(o) {
+  const extra = (o.rtcConfig && o.rtcConfig.iceServers) || [];
+  return [
+    { urls: ["stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478"] },
+    { urls: ["stun:global.stun.twilio.com:3478", "stun:stun.cloudflare.com:3478"] },
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    ...extra,
+  ];
+}
 
 // Trystero's endpoint identity is generated with Web Crypto P-256.  Browsers
 // expose crypto.subtle only in secure contexts (HTTPS, localhost, or loopback),
@@ -133,7 +160,6 @@ export function createP2PDirectory(opts = {}) {
   // here could put the directory on a different, unreachable relay subset
   // even when the actual room connection works.  The distinct room id below
   // still keeps directory traffic isolated from game traffic.
-  const appId = o.appId || P2P_APP_ID;
   const ttlMs = Number.isFinite(+o.ttlMs) ? Math.max(5_000, +o.ttlMs) : P2P_DIRECTORY_TTL_MS;
   const strategyTimeoutMs = Number.isFinite(+o.strategyTimeoutMs)
     ? Math.max(1_000, +o.strategyTimeoutMs)
@@ -255,7 +281,7 @@ export function createP2PDirectory(opts = {}) {
   async function start() {
     try {
       const joinRoom = await loadJoin();
-      room = await joinRoom({ appId }, P2P_DIRECTORY_ROOM);
+      room = await joinRoom(roomConfig(o), P2P_DIRECTORY_ROOM);
       if (room.ready && typeof room.ready.then === "function") await room.ready;
       const self = await room.getSelf();
       selfId = self && self.peerId != null ? String(self.peerId) : null;
@@ -369,7 +395,6 @@ export function createP2PSocket(opts) {
   let o = opts || {};
   let stabilityMs = o.stabilityMs != null ? o.stabilityMs : P2P_STABILITY_MS;
   let strategyTimeoutMs = o.strategyTimeoutMs != null ? o.strategyTimeoutMs : 9000;
-  let appId = o.appId || P2P_APP_ID;
   let joinFn = o.joinFn || null; // 测试注入：joinRoom(config, roomId) → room
   let probe = !!o.probe;
   let isCreator = !!o.isCreator;
@@ -792,32 +817,8 @@ export function createP2PSocket(opts) {
     throw lastErr || new Error("无可用信令策略");
   }
 
-  function roomConfig() {
-    let cfg = { appId: appId, rtcConfig: { iceServers: iceServerList() } };
-    if (o.relayUrls && o.relayUrls.length) cfg.relayConfig = { urls: o.relayUrls.slice() };
-    if (o.rtcPolyfill) cfg.rtcPolyfill = o.rtcPolyfill;
-    return cfg;
-  }
-
-  // 实测选型（2026-11-15 家宽全链路实测，工具 scripts/stun-probe.mjs）：
-  // 国内秒应答（miwifi/bilibili，对国内玩家拿 srflx 最快）+ 国际备份（twilio 稳、
-  // cloudflare 高丢包时通时断）+ Google（国内被墙但海外玩家可达）。ICE 并发查询
-  // 全部服务器，死的不应答不拖累活的；Trystero 默认只有 Google+Cloudflare，
-  // 对国内玩家等于零可用 STUN——这里显式替换掉。
-  // 注意 trystero core: [...rtcConfig?.iceServers ?? defaults, ...turnConfig] ——
-  // 传了就整体替换默认，所以海外可达的 Google 必须一并带上。
-  function iceServerList() {
-    const extra = (o.rtcConfig && o.rtcConfig.iceServers) || [];
-    return [
-      { urls: ["stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478"] },
-      { urls: ["stun:global.stun.twilio.com:3478", "stun:stun.cloudflare.com:3478"] },
-      { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
-      ...extra,
-    ];
-  }
-
   async function joinOne(name) {
-    let room = await strategy.joinRoom(roomConfig(), name);
+    let room = await strategy.joinRoom(roomConfig(o), name);
     if (room.ready && typeof room.ready.then === "function") await room.ready;
     let self = await room.getSelf();
     return { room: room, selfId: self.peerId };

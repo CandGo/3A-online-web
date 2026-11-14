@@ -14,6 +14,7 @@
 
 import { createNet } from "../src/net/net.js";
 import {
+  createP2PDirectory,
   createP2PSocket,
   p2pPrivateRoomName,
   p2pPublicRoomName,
@@ -23,6 +24,8 @@ import {
   makeP2PRoomCode,
   p2pEnvironmentError,
   P2P_APP_ID,
+  P2P_DIRECTORY_ROOM,
+  P2P_RELAY_REDUNDANCY,
 } from "../src/net/trystero-transport.js";
 
 let passed = 0,
@@ -234,6 +237,81 @@ async function main() {
     "seed 房间名确定性散列（同房同值、异房异值）",
   );
   ok(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/.test(makeP2PRoomCode()), "4 位码字符集去 0/O/1/I");
+
+  // ---------------- 目录与游戏房间共享信令/ICE 配置 ----------------
+  console.log("§13 目录启动与连接配置回归");
+  for (const custom of [false, true]) {
+    const fake = new FakeNet();
+    const configs = new Map();
+    const relayUrls = ["wss://relay.test.invalid"];
+    const extraServer = { urls: "stun:extra.test.invalid:3478" };
+    const rtcPolyfill = function TestPeerConnection() {};
+    const overrides = custom ? {
+      appId: "saltline-config-regression",
+      relayUrls,
+      rtcPolyfill,
+      rtcConfig: { iceServers: [extraServer], iceTransportPolicy: "relay" },
+    } : {};
+    const options = {
+      ...overrides,
+      joinFn: (config, roomId) => {
+        configs.set(roomId, config);
+        return fake.join(roomId);
+      },
+    };
+    const directory = createP2PDirectory(options);
+    let socket;
+    const label = custom ? "注入配置" : "默认配置";
+    try {
+      const ready = await directory.ready;
+      ok(ready === directory && !!directory.selfId(), label + "目录 ready 成功并获得身份");
+      const roomName = "slp-CFG1";
+      socket = createP2PSocket({ ...options, roomName, stabilityMs: STAB, isCreator: true });
+      ok(await until(() => socket.readyState === 1), label + "游戏房间启动成功");
+      const directoryConfig = configs.get(P2P_DIRECTORY_ROOM);
+      const gameConfig = configs.get(roomName);
+      ok(!!directoryConfig && !!gameConfig, label + "目录/游戏调用各自房间 ID");
+      ok(
+        JSON.stringify(directoryConfig) === JSON.stringify(gameConfig),
+        label + "目录和游戏的 appId、中继、ICE 完全一致",
+      );
+      ok(directoryConfig.appId === (custom ? overrides.appId : P2P_APP_ID), label + "appId 正确");
+      const servers = directoryConfig.rtcConfig.iceServers;
+      const urls = servers.flatMap((server) => server.urls);
+      ok(
+        urls.includes("stun:stun.miwifi.com:3478") && urls.includes("stun:stun.l.google.com:19302"),
+        label + "保留国内与海外 STUN",
+      );
+      if (custom) {
+        ok(
+          directoryConfig.relayConfig.urls !== relayUrls &&
+            directoryConfig.relayConfig.urls.join() === relayUrls.join() &&
+            directoryConfig.relayConfig.redundancy === undefined,
+          "显式 relayUrls 复制后覆盖默认中继选择",
+        );
+        ok(
+          directoryConfig.rtcPolyfill === rtcPolyfill && gameConfig.rtcPolyfill === rtcPolyfill,
+          "目录与游戏均保留 rtcPolyfill 注入",
+        );
+        ok(
+          servers.includes(extraServer) && directoryConfig.rtcConfig.iceTransportPolicy === "relay",
+          "额外 ICE 服务器和其他 rtcConfig 字段保留",
+        );
+        ok(overrides.rtcConfig.iceServers.length === 1, "构造配置不修改调用方 ICE 列表");
+      } else {
+        ok(
+          directoryConfig.relayConfig.redundancy === P2P_RELAY_REDUNDANCY &&
+            directoryConfig.relayConfig.redundancy === 8,
+          "目录与游戏默认均采用 8 个中继",
+        );
+      }
+      const record = directory.publish({ code: "CFG1", name: "配置回归房间", host: "房主", players: 1 });
+      ok(record && directory.list().some((item) => item.code === "CFG1"), label + "目录可发布房间");
+    } finally {
+      if (socket) socket.close();
+      await directory.close();
+    }
+  }
 
   // ---------------- 私人房：双端选举 + joined 合成 ----------------
   console.log("§13 私人房（slp-{code}）：createRoom/joinRoom → 选举 → joined");

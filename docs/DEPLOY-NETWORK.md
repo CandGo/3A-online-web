@@ -36,6 +36,7 @@
 | 本机网络 | 无 IPv6（路由器未开 RA，WLAN 仅 link-local）；出口公网 IPv4 175.8.93.47（电信，非 CGNAT）；UDP 53/123/6881 国际均通（国际 UDP **不是**一刀切拦） | 网络健康 |
 
 **结论（修正）**：
+0. **跨网 E2E 实证（2026-11-15）**：电脑（电信家宽，锥形 NAT）↔ 手机（移动 5G，CGNAT）经零服务器私人房**公网 P2P 打洞成功**——信令（Nostr）+ 映射（STUN）+ 打洞全链路实战打通。首连约 1 分钟（5G 到国际 Nostr 中继的握手重试为主），连上后稳定。测试通道 `scripts/https-serve.mjs`（手机必须走 HTTPS 拿安全上下文，否则 crypto.subtle 缺失导致零服务器面板假死）。
 1. **零服务器模式国内公网是活的**：信令通 + 国内 STUN 活 + 本网络锥形 NAT（对方只要不是对称 NAT/CGNAT 也大概率能成）。已把实测活的 iceServers 配进 trystero-transport.js（国内 miwifi/bilibili 优先 + twilio/cloudflare 备份 + Google 留给海外玩家）。
 2. 已知边界：双方都是手机热点/移动宽带（CGNAT 对称）时打洞仍可能失败——那是 TURN 的领域，零服务器无解，属预期内降级（ws 模式兜底）。
 3. 排障方法论沉淀：①探针先自证（`map(probe)` 索引泄漏这种 bug 会批量制造假"timeout"）；②UDP 服务不监听 TCP 是常态，别拿 TCP 推断主机死活；③NAT 判定必须同 socket 多服务器比对；④单发 UDP 探测 ≠ 浏览器 ICE（后者持续重试，能穿透高丢包链路）——最终以真实浏览器候选收集为准（本次用 Chrome headless 裸 CDP + Firefox 双证）。
