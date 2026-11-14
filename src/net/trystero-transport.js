@@ -793,10 +793,27 @@ export function createP2PSocket(opts) {
   }
 
   function roomConfig() {
-    let cfg = { appId: appId };
+    let cfg = { appId: appId, rtcConfig: { iceServers: iceServerList() } };
     if (o.relayUrls && o.relayUrls.length) cfg.relayConfig = { urls: o.relayUrls.slice() };
     if (o.rtcPolyfill) cfg.rtcPolyfill = o.rtcPolyfill;
     return cfg;
+  }
+
+  // 实测选型（2026-11-15 家宽全链路实测，工具 scripts/stun-probe.mjs）：
+  // 国内秒应答（miwifi/bilibili，对国内玩家拿 srflx 最快）+ 国际备份（twilio 稳、
+  // cloudflare 高丢包时通时断）+ Google（国内被墙但海外玩家可达）。ICE 并发查询
+  // 全部服务器，死的不应答不拖累活的；Trystero 默认只有 Google+Cloudflare，
+  // 对国内玩家等于零可用 STUN——这里显式替换掉。
+  // 注意 trystero core: [...rtcConfig?.iceServers ?? defaults, ...turnConfig] ——
+  // 传了就整体替换默认，所以海外可达的 Google 必须一并带上。
+  function iceServerList() {
+    const extra = (o.rtcConfig && o.rtcConfig.iceServers) || [];
+    return [
+      { urls: ["stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478"] },
+      { urls: ["stun:global.stun.twilio.com:3478", "stun:stun.cloudflare.com:3478"] },
+      { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+      ...extra,
+    ];
   }
 
   async function joinOne(name) {

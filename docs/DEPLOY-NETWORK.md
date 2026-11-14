@@ -20,21 +20,26 @@
 - **运维约束**：QUIC 走 UDP 且**无法过 nginx 等 TCP 反代**，必须应用直收 UDP 端口；强制 TLS（生产需域名+证书，Let's Encrypt 即可；自签证书浏览器侧需指纹钉扎，只适合开发）。
 - 延迟参考：同城 5-20ms / 国内跨省 20-50ms / 中国→美西 150-250ms（晚高峰劣化更狠）。
 
-## 1.5 零服务器模式（§13 Trystero）的国内实测（2026-11-15，scripts/stun-probe.mjs）
+## 1.5 零服务器模式（§13 Trystero）的国内实测（2026-11-15，scripts/stun-probe.mjs；**2026-11-15 晚修正版**）
 
-从国内家宽（湖南电信）全链路实测：
+> ⚠️ 本节首版结论"国内公共 STUN 全灭"是**错的**，根因是探针两个 bug（`targets.map(probe)` 把数组
+> 索引漏给了 timeout 参数导致 0-2ms 秒判超时；以及"TCP 443 不通=主机死"的过度推断——STUN 服务器
+> 只听 UDP 3478，不监听 TCP 443 是常态）。修正后的全链路实测（湖南电信家宽）：
 
 | 层 | 实测 | 结论 |
 |---|---|---|
-| 信令（Nostr relay） | 默认池 30 个抽样 10 个：**5 通 5 死**（wellorder/azzamo/ditto/yabu/guggero 通；primal/snort/soloco 死） | ✅ 信令层可用，Trystero 取子集即可配对 |
-| 打洞（公共 STUN） | **"国内公共 STUN"全灭**：stun.miwifi.com / stun.qq.com / stun.chat.bilibili.com 的 DNS 仍解析，但指向陈年死 IP（111.206.x 联通 / 43.138.x 腾讯云客户机 / 106.12.x 百度云）——**TCP 443 + UDP 3478 双杀全超时**，服务器本体已死 | ❌ 国内无活的公共 STUN，网上流传清单是陈年烂货 |
-| 国际 STUN | stun.cloudflare.com / global.stun.twilio.com（3478 TCP+UDP）国内不通 | ❌ 被国际线路拦，有代理的玩家才可用 |
-| 本机网络 | UDP 53/123 国内通、TCP 443/465/993 通、ICMP 出户进骨干网正常；Tailscale 已停、防火墙全关、WinDivert/XLWFP 驱动在场但未拦常规流量 | 网络本身健康，问题在上表 |
+| 信令（Nostr relay） | 默认池 30 个抽样 10 个：**5 通 5 死** | ✅ 能配对 |
+| 国内公共 STUN | **stun.miwifi.com / stun.chat.bilibili.com 活着**，家宽秒应答（stun.qq.com 死；syncthing DNS 已无） | ✅ 可用，勿信"清单全烂"的传言，也别盲信清单——逐一实测 |
+| 国际 STUN | global.stun.twilio.com 稳定通；stun.cloudflare.com **时通时断**（高丢包，浏览器 ICE 重试可拿到）；Google 被墙 | ⚠️ twilio 可用作备份 |
+| 浏览器侧 | Chrome 157 + Firefox 159 实测：无 STUN 只有 mDNS host 候选；配 STUN（含 trystero 默认的 Cloudflare）可拿到 srflx `175.8.93.47` | ✅ 浏览器栈正常 |
+| NAT 类型（同 socket 三服务器比对） | miwifi / bilibili / twilio 看到同一映射 `175.8.93.47:64043` | ✅ **锥形 NAT**——打洞最友好 |
+| 本机网络 | 无 IPv6（路由器未开 RA，WLAN 仅 link-local）；出口公网 IPv4 175.8.93.47（电信，非 CGNAT）；UDP 53/123/6881 国际均通（国际 UDP **不是**一刀切拦） | 网络健康 |
 
-**推论**：
-1. 零服务器模式的真实能力圈 = **局域网**（ICE host 候选，不需要 STUN）+ **有代理的公网玩家**（Cloudflare STUN 可达）。
-2. 国内公网零服务器无解——不是 NAT 问题，是**没有活的国内公共 STUN/TURN 可蹭**。自建 coturn 技术上一行 iceServers 就接入，但那就"有服务器"了，此时不如直接跑 ws 模式（§0 推荐路线）。
-3. 因此**不给 trystero-transport.js 配置任何公共 STUN**（配死服务器无意义）；Trystero 默认 rtcConfig 原样保留（对能出国的玩家 Google STUN 反而可达）。
+**结论（修正）**：
+1. **零服务器模式国内公网是活的**：信令通 + 国内 STUN 活 + 本网络锥形 NAT（对方只要不是对称 NAT/CGNAT 也大概率能成）。已把实测活的 iceServers 配进 trystero-transport.js（国内 miwifi/bilibili 优先 + twilio/cloudflare 备份 + Google 留给海外玩家）。
+2. 已知边界：双方都是手机热点/移动宽带（CGNAT 对称）时打洞仍可能失败——那是 TURN 的领域，零服务器无解，属预期内降级（ws 模式兜底）。
+3. 排障方法论沉淀：①探针先自证（`map(probe)` 索引泄漏这种 bug 会批量制造假"timeout"）；②UDP 服务不监听 TCP 是常态，别拿 TCP 推断主机死活；③NAT 判定必须同 socket 多服务器比对；④单发 UDP 探测 ≠ 浏览器 ICE（后者持续重试，能穿透高丢包链路）——最终以真实浏览器候选收集为准（本次用 Chrome headless 裸 CDP + Firefox 双证）。
+4. BT 网络对照（回答"为什么 BT 能通"）：BT 的发现层是活的分布式 DHT（自举节点 6 域名 5 烂尾但 1 个活即可进网；`router.bittorrent.com` 现指向 Facebook 段——域名烂尾常态）；原生客户端有裸 socket（监听端口/主动连任意 ip:port/UPnP/靠被动连接学公网映射）；下载 best-effort 可换源。浏览器只有 WebRTC 一个笼子，门票就是 STUN/TURN——但实测这张门票国内是买得到的。
 
 ## 2. 三阶段路线
 
