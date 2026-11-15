@@ -52,6 +52,7 @@ import {
   p2pPrivateRoomName,
   p2pPublicRoomName,
   makeP2PRoomCode,
+  P2P_BROWSER_RELAY_URLS,
 } from "./trystero-transport.js";
 
 // Courtesy export for remote-players.js (§2.4) to decode ps flags identically.
@@ -246,7 +247,10 @@ function createNet(context, inject) {
     if (p2pDirectoryPromise) return p2pDirectoryPromise;
     p2pDirectoryPromise = Promise.resolve()
       .then(() => {
-        p2pDirectory = createP2PDirectory({ displayName: localName });
+        p2pDirectory = createP2PDirectory({
+          displayName: localName,
+          relayUrls: P2P_BROWSER_RELAY_URLS,
+        });
         return p2pDirectory.ready;
       })
       .then((dir) => {
@@ -348,6 +352,7 @@ function createNet(context, inject) {
         roomMeta: meta || null,
         probe: !!(pending && pending.p2p && pending.p2p.probe),
         isCreator: !!(pending && pending.p2p && pending.p2p.isCreator),
+        relayUrls: P2P_BROWSER_RELAY_URLS,
       });
       ws.onopen = function () {
         // hello 携带呼号；建房端附带房间元数据（mode/visibility 随 mesh 广播）

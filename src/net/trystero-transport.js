@@ -32,6 +32,18 @@ export const P2P_PUBLIC_SHARDS = 9;
 export const P2P_APP_ID = "saltline-p2p-v1";
 export const P2P_DIRECTORY_ROOM = "saltline-directory-v1";
 export const P2P_RELAY_REDUNDANCY = 8;
+// Browser-facing relay set. The package default is a large rotating list;
+// that is useful for generic apps but is brittle for this game because one
+// unreachable relay can leave the lobby looking stuck while the others are
+// still being retried. Keep this list small and explicit for deterministic
+// browser startup.
+export const P2P_BROWSER_RELAY_URLS = Object.freeze([
+  "wss://relay.nostr.net",
+  "wss://relay.ditto.pub",
+  "wss://nostrelay.circum.space",
+  "wss://relay.nostrhub.fr",
+  "wss://yabu.me",
+]);
 const P2P_DIRECTORY_TTL_MS = 18_000;
 const P2P_DIRECTORY_HEARTBEAT_MS = 5_000;
 
