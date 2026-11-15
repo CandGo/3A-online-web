@@ -44,9 +44,14 @@ npm run mp          # HTTP 静态 + WebSocket，默认 8787
 
 **架构**：房主权威模拟 + Node `ws` 纯中继（server/）；同 seed 各端确定性重建关卡（免几何同步），玩家态 15Hz / 敌人快照 10Hz；设计文档见 `docs/MP-CONTRACT.md` 与 `docs/MP-BLUEPRINT.md`。开发模式 `npm run dev`（5173）已配 `/ws` 代理到 8787，需另起 `npm run mp`。
 
-## 在线试玩（上游单机版）
+## 在线试玩
+**[打开汉化在线联机版](https://candgo.github.io/3A-online-web/)**，点击 **零服务器大厅** 开始联机游戏。
 
+
+
+（上游单机版）
 **[打开 Saltline](https://realskyrin.github.io/fps3ademo-saltline/)**，点击 **DEPLOY** 开始游戏。
+
 
 ## 游戏截图
 
